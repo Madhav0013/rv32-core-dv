@@ -42,7 +42,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: pip
 
       - name: Install Python dependencies
@@ -95,7 +95,7 @@ jobs:
       - uses: actions/setup-python@v5
         if: steps.cache.outputs.cache-hit != 'true'
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Build toolchain
         if: steps.cache.outputs.cache-hit != 'true'
@@ -123,7 +123,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: pip
 
       - name: Install Python dependencies
@@ -182,7 +182,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: pip
 
       - name: Install Python dependencies
@@ -233,7 +233,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: pip
 
       - name: Install Python dependencies
@@ -250,7 +250,7 @@ jobs:
         if: steps.cache-oss.outputs.cache-hit != 'true'
         run: |
           mkdir -p "$RISCV_TOOLS_DIR"
-          URL=$(curl -sL https://api.github.com/repos/YosysHQ/oss-cad-suite-build/releases/latest \
+          URL=$(curl -sL -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/YosysHQ/oss-cad-suite-build/releases/latest \
                 | grep -o 'https://[^"]*oss-cad-suite-linux-x64[^"]*\.tgz' | head -1)
           echo "Downloading $URL"
           curl -fL "$URL" -o /tmp/oss-cad-suite.tgz
@@ -311,7 +311,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
           cache: pip
 
       - name: Install Python dependencies

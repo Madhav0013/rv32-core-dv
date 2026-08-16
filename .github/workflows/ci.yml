@@ -217,7 +217,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: random-regression
-          path: build/
+          path: |
+            build/
+            out_*/
           if-no-files-found: warn
 
   # ---------------------------------------------------------------------------

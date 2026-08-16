@@ -18,7 +18,6 @@ module core (
     input  logic [31:0] dmem_rdata_i,
     input  logic        dmem_error_i
 
-`ifdef RISCV_FORMAL
     // -------------------------------------------------------------------------
     // RVFI Interface (RISC-V Formal Interface)
     // -------------------------------------------------------------------------
@@ -44,7 +43,6 @@ module core (
     output logic [3:0]  rvfi_mem_wmask,
     output logic [31:0] rvfi_mem_rdata,
     output logic [31:0] rvfi_mem_wdata
-`endif
 );
 
   // ---------------------------------------------------------------------------
@@ -416,7 +414,6 @@ module core (
 
 `endif
 
-`ifdef RISCV_FORMAL
   // ---------------------------------------------------------------------------
   // RVFI Output Assignments
   // ---------------------------------------------------------------------------
@@ -456,7 +453,5 @@ module core (
   assign rvfi_mem_wmask = mem_wb_q.mem_write ? 4'b1111 : 4'b0000;
   assign rvfi_mem_rdata = mem_wb_q.mem_rdata;
   assign rvfi_mem_wdata = mem_wb_q.rs2_data; // Original write data
-
-`endif
 
 endmodule : core

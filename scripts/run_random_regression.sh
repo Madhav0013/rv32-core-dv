@@ -37,6 +37,10 @@ done
 if [ ! -d "$DV_DIR" ]; then
   echo "==> Cloning riscv-dv into $DV_DIR"
   git clone --depth 1 https://github.com/chipsalliance/riscv-dv.git "$DV_DIR"
+  
+  # Patch deprecated 'imp' module for Python 3.12 compatibility
+  sed -i 's/from imp import reload/from importlib import reload/g' "$DV_DIR/pygen/pygen_src/isa/riscv_instr.py" || true
+  
   pip3 install --user -r "$DV_DIR/requirements.txt" || \
     pip3 install --user --break-system-packages -r "$DV_DIR/requirements.txt"
 fi

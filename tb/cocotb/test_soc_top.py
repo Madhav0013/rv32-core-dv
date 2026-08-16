@@ -3,6 +3,7 @@ import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, Timer
 from elftools.elf.elffile import ELFFile
+from retire_log import RetireLogger
 
 BASE_ADDR = 0x80000000
 
@@ -90,27 +91,43 @@ async def test_soc(dut):
     max_cycles = 2_000_000
     cycles = 0
     
-    # We must monitor if there's a write to tohost_addr
-    while cycles < max_cycles:
-        await RisingEdge(dut.clk_i)
-        
-        if dut.dmem_req.value == 1 and dut.dmem_write.value == 1:
-            addr = int(dut.dmem_addr.value)
-            if addr == tohost_addr:
-                val = int(dut.dmem_wdata.value)
-                if val == 1:
-                    dut._log.info("Test Passed (tohost == 1)")
-                    await RisingEdge(dut.clk_i)
-                    await RisingEdge(dut.clk_i)
+    rtl_log_path = cocotb.plusargs.get("rtl_log", "retire.log")
+    
+    with RetireLogger(rtl_log_path) as trace:
+        # We must monitor if there's a write to tohost_addr
+        while cycles < max_cycles:
+            await RisingEdge(dut.clk_i)
+            cycles += 1
+            
+            # One line per RETIRED instruction. Gate on retirement, never on fetch
+            # or decode -- flushed instructions must not appear.
+            if dut.u_core.rvfi_valid.value == 1:
+                trace.log(
+                    pc=int(dut.u_core.rvfi_pc_rdata.value),
+                    insn=int(dut.u_core.rvfi_insn.value),
+                    rd=int(dut.u_core.rvfi_rd_addr.value),
+                    rd_value=int(dut.u_core.rvfi_rd_wdata.value),
+                )
+            
+            if dut.dmem_req.value == 1 and dut.dmem_write.value == 1:
+                addr = int(dut.dmem_addr.value)
+                if addr == tohost_addr:
+                    val = int(dut.dmem_wdata.value)
+                    trace.terminate_tohost(val, cycles=cycles)
                     
-                    sig_file = os.environ.get("SIGNATURE_FILE")
-                    if sig_file:
-                        dump_signature(dut, begin_sig, end_sig, sig_file)
+                    if val == 1:
+                        dut._log.info("Test Passed (tohost == 1)")
+                        await RisingEdge(dut.clk_i)
+                        await RisingEdge(dut.clk_i)
                         
-                    return
-                elif val > 1:
-                    fail_code = val >> 1
-                    raise cocotb.result.TestFailure(f"Test Failed with code {fail_code} (tohost == {val})")
-        cycles += 1
-        
-    raise cocotb.result.TestFailure("Timeout waiting for tohost write")
+                        sig_file = os.environ.get("SIGNATURE_FILE")
+                        if sig_file:
+                            dump_signature(dut, begin_sig, end_sig, sig_file)
+                            
+                        return
+                    elif val > 1:
+                        fail_code = val >> 1
+                        raise cocotb.result.TestFailure(f"Test Failed with code {fail_code} (tohost == {val})")
+            
+        trace.terminate_timeout(cycles=cycles)
+        raise cocotb.result.TestFailure("Timeout waiting for tohost write")

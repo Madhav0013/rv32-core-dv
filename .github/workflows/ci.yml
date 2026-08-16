@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Verilator
         run: |
@@ -40,7 +40,7 @@ jobs:
           sudo apt-get install -y verilator
           verilator --version
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -62,7 +62,7 @@ jobs:
 
       - name: Upload waveforms on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: waveforms
           path: |
@@ -80,19 +80,19 @@ jobs:
     outputs:
       cache-key: ${{ steps.key.outputs.value }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - id: key
         run: echo "value=riscv-tools-${{ runner.os }}-${{ hashFiles('scripts/setup.sh') }}" >> "$GITHUB_OUTPUT"
 
       - name: Restore toolchain cache
         id: cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ env.RISCV_TOOLS_DIR }}
           key: ${{ steps.key.outputs.value }}
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         if: steps.cache.outputs.cache-hit != 'true'
         with:
           python-version: "3.12"
@@ -114,14 +114,14 @@ jobs:
     needs: toolchain
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Verilator
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y verilator device-tree-compiler
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -130,7 +130,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Restore toolchain
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ env.RISCV_TOOLS_DIR }}
           key: ${{ needs.toolchain.outputs.cache-key }}
@@ -156,7 +156,7 @@ jobs:
 
       - name: Upload RISCOF report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: riscof-report
           path: |
@@ -173,14 +173,14 @@ jobs:
     needs: toolchain
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Verilator
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y verilator
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -189,7 +189,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Restore toolchain
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ env.RISCV_TOOLS_DIR }}
           key: ${{ needs.toolchain.outputs.cache-key }}
@@ -214,7 +214,7 @@ jobs:
 
       - name: Upload random regression logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: random-regression
           path: |
@@ -231,9 +231,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -243,7 +243,7 @@ jobs:
 
       - name: Cache OSS CAD Suite
         id: cache-oss
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ env.RISCV_TOOLS_DIR }}/oss-cad-suite
           key: oss-cad-suite-${{ runner.os }}-v1
@@ -286,7 +286,7 @@ jobs:
 
       - name: Upload formal results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: formal-results
           path: |
@@ -304,14 +304,14 @@ jobs:
     if: always()
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Verilator
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y verilator
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -320,7 +320,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Download all evidence
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: .
           merge-multiple: true

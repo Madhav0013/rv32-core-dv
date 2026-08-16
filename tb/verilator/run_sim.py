@@ -16,7 +16,7 @@ def main():
     env['TESTCASE_ELF'] = os.path.abspath(args.elf)
     env['SIGNATURE_FILE'] = os.path.abspath(args.signature)
 
-    test_name = os.path.basename(os.path.dirname(os.path.dirname(args.elf)))
+    test_name = os.path.basename(os.path.dirname(args.elf))
     sim_build_dir = f'sim_build/soc_top_{test_name}'
     env['COCOTB_RESULTS_FILE'] = os.path.abspath(os.path.join(cocotb_dir, sim_build_dir, 'results.xml'))
     cmd = ['make', 'soc_top', f'SOC_TOP_SIM_BUILD={sim_build_dir}']

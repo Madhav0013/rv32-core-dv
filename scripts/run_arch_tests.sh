@@ -71,6 +71,10 @@ fi
 if [ ! -d "$REPO_ROOT/riscv-arch-test" ]; then
   echo "==> Fetching riscv-arch-test suite"
   riscof --verbose info arch-test --clone
+  # WORKAROUND: riscof concurrently runs git commands on this directory for every test.
+  # With jobs=4, this causes git lock contention and hangs indefinitely.
+  # Removing the .git directory forces riscof to skip the git commands.
+  rm -rf riscv-arch-test/.git
 fi
 
 echo "==> RISCOF: running architectural compliance suite"

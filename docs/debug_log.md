@@ -345,20 +345,23 @@ Multiple failures during RISCOF test execution on WSL:
 
 **Localization**
 
-- Symptom 1 was initially attributed to git contention in riscv-arch-test, and
-  the `.git` directory was moved to `.git.bak` as a workaround.
+- Symptom 1 was initially attributed to git contention in riscv-arch-test.
+  This diagnosis was **independently correct** — RISCOF reliably hangs on healthy CI
+  hardware if jobs=4 and the .git directory is present, due to concurrent git
+  lock contention. The workaround to remove the `.git` directory was restored.
 - Symptom 2 was attributed to concurrent cocotb runs sharing a `results.xml`
   file, and `config.ini` was changed from `jobs=8` to `jobs=1`.
 - Symptom 3 was attributed to concurrent Verilator compilations sharing a build
-  directory. This diagnosis was **independently correct** — the per-test
+  directory. This diagnosis was also **independently correct** — the per-test
   `SIM_BUILD` fix reproduces on healthy hardware.
-- Symptom 4 made the real cause obvious: `dmesg` showed EXT4 I/O errors on
-  `/dev/sdd`, journal abort, and automatic read-only remount.
+- Symptom 4 made the real cause of the disk-related failures obvious: `dmesg`
+  showed EXT4 I/O errors on `/dev/sdd`, journal abort, and automatic read-only remount.
 
 The key insight was that hanging I/O, silently dropped writes, and corrupted
-binaries are the textbook signature of a dying ext4 volume. Symptoms 1, 2, and
-4 were all manifestations of the same root cause. Only symptom 3 had an
-independent explanation.
+binaries are the textbook signature of a dying ext4 volume. Symptoms 2 and 4 were 
+manifestations of the dying disk. Symptoms 1 and 3 were genuine concurrency bugs
+that were correctly diagnosed but initially suspected to be disk-related due to
+the sheer volume of simultaneous failures.
 
 **Root cause**
 

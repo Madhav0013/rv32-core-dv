@@ -68,6 +68,11 @@ EOF
 fi
 
 # --- Run ----------------------------------------------------------------------
+if [ ! -d "$REPO_ROOT/riscv-arch-test" ]; then
+  echo "==> Fetching riscv-arch-test suite"
+  riscof --verbose info arch-test --clone
+fi
+
 echo "==> RISCOF: running architectural compliance suite"
 riscof run --config=tests/riscof/config.ini \
            --suite=riscv-arch-test/riscv-test-suite/ \

@@ -1,0 +1,325 @@
+name: CI
+
+# Full verification on clean, disposable runners.
+#
+# Local WSL suffered three filesystem failures under simulation I/O load, so
+# every verification level now runs here instead. This buys three things:
+#
+#   1. a stable environment that a simulation workload cannot corrupt
+#   2. clean-machine reproduction by construction -- a runner IS a clean machine
+#   3. evidence a reviewer can verify independently, rather than local artifacts
+#      they have to take on trust
+#
+# Every job calls scripts/setup.sh and a make target. Nothing here is a command
+# that exists only inside this YAML file -- if CI fails, the same command
+# reproduces the failure locally.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  RISCV_TOOLS_DIR: ${{ github.workspace }}/.riscv-tools
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Fast gate. Runs on every push, must stay under ~3 minutes.
+  # ---------------------------------------------------------------------------
+  lint-and-unit:
+    name: Lint + block-level tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Verilator
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y verilator
+          verilator --version
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Lint RTL
+        run: make lint
+
+      - name: Block-level cocotb tests
+        run: make unit
+
+      - name: Lockstep comparator self-test
+        run: python3 tb/lockstep/spike_compare.py --selftest
+
+      - name: Upload waveforms on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: waveforms
+          path: |
+            **/*.vcd
+            **/*.fst
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # Shared toolchain build (GCC + Spike), cached so it runs once.
+  # ---------------------------------------------------------------------------
+  toolchain:
+    name: Build RISC-V toolchain and Spike
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    outputs:
+      cache-key: ${{ steps.key.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: key
+        run: echo "value=riscv-tools-${{ runner.os }}-${{ hashFiles('scripts/setup.sh') }}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore toolchain cache
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.RISCV_TOOLS_DIR }}
+          key: ${{ steps.key.outputs.value }}
+
+      - uses: actions/setup-python@v5
+        if: steps.cache.outputs.cache-hit != 'true'
+        with:
+          python-version: "3.11"
+
+      - name: Build toolchain
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update -qq
+          pip install -r requirements.txt
+          ./scripts/setup.sh
+
+  # ---------------------------------------------------------------------------
+  # RISCOF architectural compliance. The strongest single claim in the project.
+  # ---------------------------------------------------------------------------
+  arch:
+    name: RISCOF architectural compliance
+    runs-on: ubuntu-24.04
+    needs: toolchain
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Verilator
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y verilator device-tree-compiler
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore toolchain
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.RISCV_TOOLS_DIR }}
+          key: ${{ needs.toolchain.outputs.cache-key }}
+
+      - name: Run architectural tests
+        run: |
+          source scripts/env.sh
+          make arch
+
+      - name: Summarise results
+        if: always()
+        run: |
+          REPORT=$(find . -name report.html -path '*riscof*' | head -1)
+          if [ -n "$REPORT" ]; then
+            PASS=$(grep -o '>[[:space:]]*Passed[[:space:]]*<' "$REPORT" | wc -l)
+            FAIL=$(grep -o '>[[:space:]]*Failed[[:space:]]*<' "$REPORT" | wc -l)
+            echo "### RISCOF: $PASS passed, $FAIL failed" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload RISCOF report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: riscof-report
+          path: |
+            riscof_work/
+            **/report.html
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # Constrained-random regression against Spike.
+  # ---------------------------------------------------------------------------
+  random:
+    name: riscv-dv random regression
+    runs-on: ubuntu-24.04
+    needs: toolchain
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Verilator
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y verilator
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore toolchain
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.RISCV_TOOLS_DIR }}
+          key: ${{ needs.toolchain.outputs.cache-key }}
+
+      - name: Run random regression
+        run: |
+          source scripts/env.sh
+          mkdir -p build
+          make random 2>&1 | tee build/random_regression.log
+
+      - name: Count what actually completed
+        if: always()
+        run: |
+          PROGS=$(find build -name '*.rtl.log' 2>/dev/null | wc -l)
+          echo "### Random regression: $PROGS program(s) co-simulated" >> "$GITHUB_STEP_SUMMARY"
+          echo "Put THIS number in the README, not the intended iteration count." \
+            >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload random regression logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: random-regression
+          path: build/
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # Formal verification. Currently the least-substantiated claim in the repo --
+  # this job is what earns it back.
+  # ---------------------------------------------------------------------------
+  formal:
+    name: riscv-formal bounded model checking
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Cache OSS CAD Suite
+        id: cache-oss
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.RISCV_TOOLS_DIR }}/oss-cad-suite
+          key: oss-cad-suite-${{ runner.os }}-v1
+
+      - name: Install OSS CAD Suite (Yosys, SymbiYosys, SMT solvers)
+        if: steps.cache-oss.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$RISCV_TOOLS_DIR"
+          URL=$(curl -sL https://api.github.com/repos/YosysHQ/oss-cad-suite-build/releases/latest \
+                | grep -o 'https://[^"]*oss-cad-suite-linux-x64[^"]*\.tgz' | head -1)
+          echo "Downloading $URL"
+          curl -fL "$URL" -o /tmp/oss-cad-suite.tgz
+          tar -xzf /tmp/oss-cad-suite.tgz -C "$RISCV_TOOLS_DIR"
+
+      - name: Clone riscv-formal
+        run: |
+          if [ ! -d formal_tools/riscv-formal ]; then
+            mkdir -p formal_tools
+            git clone --depth 1 https://github.com/YosysHQ/riscv-formal.git \
+              formal_tools/riscv-formal
+          fi
+
+      - name: Run formal checks
+        run: |
+          source "$RISCV_TOOLS_DIR/oss-cad-suite/environment"
+          sby --version
+          yosys --version
+          make formal
+
+      - name: Summarise proofs
+        if: always()
+        run: |
+          PASS=$(find . -name PASS -path '*check*' 2>/dev/null | wc -l)
+          FAIL=$(find . -name FAIL -path '*check*' 2>/dev/null | wc -l)
+          DEPTH=$(grep -rhoP 'depth\s*[:=]\s*\K\d+' formal/*.cfg formal/**/*.sby 2>/dev/null | head -1)
+          echo "### Formal: $PASS proven, $FAIL failed, bound depth ${DEPTH:-unknown}" \
+            >> "$GITHUB_STEP_SUMMARY"
+          echo "Both the property count AND the bound depth go in the README." \
+            >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload formal results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: formal-results
+          path: |
+            formal/
+            **/checks/
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # The gate that matters: does the README actually match reality?
+  # ---------------------------------------------------------------------------
+  audit:
+    name: Claim audit
+    runs-on: ubuntu-24.04
+    needs: [lint-and-unit, arch, random, formal]
+    if: always()
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Verilator
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y verilator
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download all evidence
+        uses: actions/download-artifact@v4
+        with:
+          path: .
+          merge-multiple: true
+
+      - name: Audit README claims against the evidence
+        run: python3 scripts/audit.py --full | tee audit.txt
+
+      - name: Publish audit to the run summary
+        if: always()
+        run: |
+          {
+            echo '### Claim audit'
+            echo '```'
+            cat audit.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

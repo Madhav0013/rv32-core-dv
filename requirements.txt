@@ -1,0 +1,30 @@
+# -----------------------------------------------------------------------------
+# Python dependencies. VERSIONS ARE PINNED ON PURPOSE.
+#
+# cocotb 2.x requires Verilator >= 5.036. The Verilator that ships in Ubuntu
+# 24.04 LTS apt is 5.020, so cocotb 2.x fails at the Makefile stage with a
+# version check before it ever compiles anything. cocotb 1.9.2 works with the
+# apt Verilator and with every newer one, which means `apt install verilator`
+# is enough to get a green run on a stock Ubuntu box.
+#
+# If you deliberately install a newer Verilator (e.g. from the OSS CAD Suite
+# tarball, which you will want anyway for the formal phase), you may move to
+# cocotb 2.x -- but then you must change every `units="ns"` in tb/cocotb/ to
+# `unit="ns"`, because that keyword was renamed. Do it in one commit or not at
+# all.
+# -----------------------------------------------------------------------------
+cocotb==1.9.2
+
+# RISCOF: the official RISC-V architectural test framework / runner.
+riscof
+
+# Used by riscv-dv's pyflow mode (constrained-random generation in pure Python,
+# no commercial SystemVerilog simulator required).
+pyvsc
+sortedcontainers
+
+# ELF parsing for the lockstep comparator and signature extraction.
+pyelftools
+
+# Test reporting
+pytest

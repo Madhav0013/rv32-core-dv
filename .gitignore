@@ -1,0 +1,60 @@
+# Simulation / build artefacts
+sim_build/
+obj_dir/
+build/
+*.vcd
+*.fst
+*.o
+*.d
+results.xml
+
+# RISCOF — keep only the report as committed evidence
+riscof_work/*
+!riscof_work/report.html
+riscof_work_*/
+
+# riscv-dv output
+out_*/
+seed_*/
+
+# Formal
+formal/checks/
+*.sby.log
+
+# Compiled test programs
+*.elf
+*.bin
+*.hex
+*.dis
+*.map
+
+# Toolchain / third-party checkouts -- these are cloned by scripts/setup.sh,
+# they are NOT vendored into this repo. Keeping them out of git is what stops
+# the repo from ballooning to gigabytes.
+third_party/
+riscv-arch-test/
+riscv-dv/
+riscv-formal/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# Downloaded binaries and tools
+formal_tools/
+oss-cad-suite.exe
+pyvsc/
+pyboolector*
+sim_output.txt
+
+# RISCOF config is generated at runtime by run_arch_tests.sh
+tests/riscof/config.ini

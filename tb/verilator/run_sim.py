@@ -18,6 +18,7 @@ def main():
 
     test_name = os.path.basename(os.path.dirname(os.path.dirname(args.elf)))
     sim_build_dir = f'sim_build/soc_top_{test_name}'
+    env['COCOTB_RESULTS_FILE'] = os.path.abspath(os.path.join(cocotb_dir, sim_build_dir, 'results.xml'))
     cmd = ['make', 'soc_top', f'SOC_TOP_SIM_BUILD={sim_build_dir}']
     # We suppress output to avoid spamming unless it fails
     try:

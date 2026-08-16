@@ -71,9 +71,11 @@ fi
 if [ ! -d "$REPO_ROOT/riscv-arch-test" ]; then
   echo "==> Fetching riscv-arch-test suite"
   riscof --verbose info arch-test --clone
-  # WORKAROUND: riscof concurrently runs git commands on this directory for every test.
-  # With jobs=4, this causes git lock contention and hangs indefinitely.
-  # Removing the .git directory forces riscof to skip the git commands.
+  # RISCOF invokes git against the arch-test repository once per test to record
+  # the suite revision. At jobs>1 those concurrent invocations contend on the
+  # index lock and the suite hangs indefinitely. Removing .git bypasses the
+  # version query. Safe here because CI clones the suite fresh on every run and
+  # never needs its history.
   rm -rf riscv-arch-test/.git
 fi
 

@@ -2,10 +2,10 @@
 
 [![CI](https://github.com/Madhav0013/rv32-core-dv/actions/workflows/ci.yml/badge.svg)](https://github.com/Madhav0013/rv32-core-dv/actions/workflows/ci.yml)
 
-> **Status: scaffold.** The verification infrastructure is in place and green;
-> the core itself is being built phase by phase per
-> [`IMPLEMENTATION.md`](IMPLEMENTATION.md). Numbers below are filled in as
-> phases complete — empty cells mean *not yet measured*, never *estimated*.
+> Every cell in the results table below is either a measured number with a
+> committed artifact behind it, or `—`. A dash means *not yet measured*, never
+> *estimated*. `scripts/audit.py` checks this mechanically and fails if a claim
+> outruns its evidence.
 
 A 5-stage pipelined RV32I processor, verified the way a processor DV team would
 verify one: against a golden reference model on every retired instruction,
@@ -22,8 +22,8 @@ below is backed by a command a stranger can run.
 
 | Metric | Value | Produced by |
 |---|---|---|
-| RV32I architectural tests passing | 41 | `make arch` |
-| RV32M architectural tests passing | - | `make arch` |
+| RV32I architectural tests passing | **41 / 41** | `make arch` — see [`riscof_work/report.html`](riscof_work/report.html) |
+| RV32M architectural tests passing | — | M extension not implemented |
 | Random programs co-simulated vs. Spike | 5 | `make random` |
 | Instructions co-simulated (total) | — | `make random` |
 | Functional coverage | - | `make coverage` |

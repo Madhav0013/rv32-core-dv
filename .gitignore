@@ -11,6 +11,7 @@ results.xml
 # RISCOF — keep only the report as committed evidence
 riscof_work/*
 !riscof_work/report.html
+!riscof_work/style.css
 riscof_work_*/
 
 # riscv-dv output

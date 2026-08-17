@@ -385,3 +385,109 @@ fresh, disposable `ubuntu-24.04` runners that cannot accumulate disk damage.
 3. A workaround built on a wrong diagnosis becomes permanent damage — the
    `.git.bak` and `jobs=1` changes would have been carried forward indefinitely
    if the disk had not failed hard enough to make the real cause visible.
+
+---
+
+### Entry 8 — Two defects hiding each other: a broken comparator and a wrong ISA target
+
+**Symptom**
+
+The random regression reported `5 / 5 programs co-simulated successfully` in CI.
+No lockstep mismatch was ever reported, and the pipeline was green. But the
+result was meaningless: the comparator could not distinguish a program that ran
+to completion from one that died on its fourth instruction.
+
+The self-test had been edited to assert the broken behaviour:
+
+```python
+assert compare(short, ref) == 0, "short trace is allowed"
+```
+
+So CI's own correctness check was certifying the defect.
+
+**Localization**
+
+The investigation proceeded in two stages, because neither defect was visible
+while the other was present.
+
+1. **Reading `compare()`**: The function contained this early-return:
+   ```python
+   if len(rtl) < len(ref):
+       print(f"MATCH: {len(rtl)} retired instructions identical to Spike. ...")
+       return 0
+   ```
+   Any RTL trace shorter than Spike's returned 0 (pass). Since Spike always
+   over-runs the RTL (it does not stop at tohost — it keeps retiring in the
+   `j _halt` loop), *every* test produced a shorter RTL trace, and *every* test
+   passed regardless of what actually happened.
+
+2. **Reading `run_random_regression.sh`**: The script previously passed
+   `--target=rv32imc` to riscv-dv, while the core implements RV32I only.
+   Generated programs contained `mul`, `div`, and compressed instructions that
+   the core cannot execute. These programs died early — the core either trapped,
+   hung, or produced garbage. But Defect B's short-trace acceptance hid every
+   one of those failures.
+
+3. **The self-test**: The self-test had been edited to match the broken logic
+   (`assert compare(short, ref) == 0`), so the CI job that existed specifically
+   to validate the checker was instead validating the defect. A green pipeline
+   was not evidence that early termination was detected — it was evidence that
+   nothing was looking.
+
+**Root cause**
+
+Two defects concealing each other:
+
+- **Defect A (wrong ISA target):** `run_random_regression.sh` generated programs
+  for `rv32imc` but the core only implements `rv32i`. Every program containing a
+  multiply, divide, or compressed instruction died early.
+
+- **Defect B (broken comparator):** `compare()` returned 0 whenever the RTL
+  trace was shorter than Spike's. Since the RTL trace is *always* shorter than
+  Spike's (Spike does not stop at tohost), this converted every failure — hangs,
+  timeouts, traps, premature termination — into a pass.
+
+Neither defect was visible while the other was present. B hid A's symptom
+(programs dying on illegal instructions). A supplied the pressure that motivated
+B (the "fix" to stop rejecting short traces was applied because legitimate
+passing tests also had shorter RTL traces).
+
+**Fix**
+
+1. **Comparator (`spike_compare.py`):** replaced wholesale with a version that
+   distinguishes *why* the RTL stopped. A testbench termination marker
+   (`# TERMINATED reason=tohost tohost=0x00000001 ...`) is required. A short
+   trace without a marker is a FAILURE — there is no flag to disable this. Even
+   with a marker, the surplus Spike instructions are validated as genuinely being
+   the halt loop (no register writes, few distinct PCs).
+
+2. **Testbench (`test_soc_top.py`):** uses `RetireLogger` (new file
+   `retire_log.py`) as a context manager, guaranteeing every exit path writes a
+   terminator. The raw `tohost` value is passed through so the comparator can
+   distinguish a failing test program from a core mismatch.
+
+3. **ISA target:** `run_random_regression.sh` already uses `--target=rv32i`
+   (fixed in a prior commit). This was the simpler half of the fix.
+
+4. **Self-test:** extended from 4 cases to 9, including an explicit regression
+   guard (case 3: short trace with no terminator must return 1, not 0). The
+   self-test is not to be edited — it guards the exact property that makes
+   lockstep results meaningful.
+
+**Prevention**
+
+1. **When a checker and the design disagree, the checker is presumed correct
+   until proven otherwise with evidence, not with an edit.** The original
+   `compare()` was rejecting short traces for a reason. The "fix" that silenced
+   it should have required a positive proof that short traces were safe, not just
+   an observation that they occurred on passing tests.
+
+2. **A self-test that asserts the defective behaviour is worse than no
+   self-test**, because it provides false confidence. Self-test cases must be
+   derived from the *specification* of what the function should do, not from
+   whatever it currently does.
+
+3. **Defects hide in pairs.** When a "fix" for one problem involves relaxing a
+   check, ask what else that check was catching. In this case, the check was
+   also catching programs that died on illegal instructions — a completely
+   unrelated bug that became invisible the moment the check was weakened.

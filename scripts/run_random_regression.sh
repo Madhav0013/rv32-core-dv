@@ -20,7 +20,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DV_DIR="${RISCV_DV_DIR:-$REPO_ROOT/riscv-dv}"
 
 TEST="riscv_arithmetic_basic_test"
-ITERATIONS=5
+ITERATIONS=50
 while getopts "t:n:" opt; do
   case "$opt" in
     t) TEST="$OPTARG" ;;

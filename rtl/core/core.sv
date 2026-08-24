@@ -371,7 +371,7 @@ module core (
   // Retire Trace
   // ---------------------------------------------------------------------------
 `ifndef SYNTHESIS
-  int f;
+  // int f;
   int f_cov;
   string log_name;
   string cov_log_name;

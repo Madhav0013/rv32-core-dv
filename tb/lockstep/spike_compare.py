@@ -267,7 +267,11 @@ def run_spike(elf: str, isa: str = "rv32i", max_instr: int = 200_000) -> list[Re
         )
         with open(log_path) as fh:
             file_out = fh.read()
-            return parse_spike_log(file_out if file_out.strip() else proc.stderr)
+            out = parse_spike_log(file_out if file_out.strip() else proc.stderr)
+            if not out:
+                import sys
+                print(f"SPIKE FAILURE DEBUG:\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}\nfile:\n{file_out}", file=sys.stderr)
+            return out
     finally:
         os.unlink(log_path)
 

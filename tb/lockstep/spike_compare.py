@@ -250,7 +250,7 @@ def run_spike(elf: str, isa: str = "rv32i", max_instr: int = 200_000) -> list[Re
     with tempfile.NamedTemporaryFile("w+", suffix=".spike.log", delete=False) as fh:
         log_path = fh.name
     try:
-        subprocess.run(
+        proc = subprocess.run(
             [
                 spike,
                 f"--isa={isa}",
@@ -266,7 +266,8 @@ def run_spike(elf: str, isa: str = "rv32i", max_instr: int = 200_000) -> list[Re
             timeout=600,
         )
         with open(log_path) as fh:
-            return parse_spike_log(fh.read())
+            file_out = fh.read()
+            return parse_spike_log(file_out if file_out.strip() else proc.stderr)
     finally:
         os.unlink(log_path)
 

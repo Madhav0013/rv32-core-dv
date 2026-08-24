@@ -157,6 +157,8 @@ def parse_spike_log(text: str) -> list[Retire]:
     for line in text.splitlines():
         m = _SPIKE_RE.match(line.strip())
         if not m:
+            if "core" in line.strip() and "0x" in line.strip():
+                print(f"DEBUG_SPIKE_UNMATCHED: {line.strip()}")
             continue  # banners, mem-only lines, csr lines
         rd = int(m.group("rd")) if m.group("rd") else 0
         val = int(m.group("val"), 16) if m.group("val") else 0
@@ -387,6 +389,12 @@ def compare(
         print("=" * 72)
         print("RTL RETIRED MORE INSTRUCTIONS THAN SPIKE")
         print("=" * 72)
+        if len(ref) == 0:
+            print("--- SPIKE LOG HEAD ---")
+            try:
+                import sys
+                print("raw spike output was empty or didn't match regex", file=sys.stderr)
+            except Exception: pass
         print(f"  RTL retired  : {len(rtl)}")
         print(f"  SPIKE retired: {len(ref)}")
         print(

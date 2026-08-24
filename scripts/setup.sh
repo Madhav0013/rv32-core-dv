@@ -74,7 +74,7 @@ if [ ! -x "$SPIKE_PREFIX/bin/spike" ]; then
       https://github.com/riscv-software-src/riscv-isa-sim.git "$SPIKE_SRC"
   mkdir -p "$SPIKE_SRC/build"
   pushd "$SPIKE_SRC/build" >/dev/null
-    ../configure --prefix="$SPIKE_PREFIX"
+    ../configure --prefix="$SPIKE_PREFIX" --enable-commitlog
     make -j"$(nproc)"
     make install
   popd >/dev/null

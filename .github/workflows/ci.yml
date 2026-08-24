@@ -37,7 +37,7 @@ jobs:
       - name: Install Verilator
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y verilator
+          sudo apt-get install -y verilator device-tree-compiler
           verilator --version
 
       - uses: actions/setup-python@v7
@@ -178,7 +178,7 @@ jobs:
       - name: Install Verilator
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y verilator
+          sudo apt-get install -y verilator device-tree-compiler
 
       - uses: actions/setup-python@v7
         with:
@@ -309,7 +309,7 @@ jobs:
       - name: Install Verilator
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y verilator
+          sudo apt-get install -y verilator device-tree-compiler
 
       - uses: actions/setup-python@v7
         with:

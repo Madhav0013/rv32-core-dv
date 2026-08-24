@@ -256,7 +256,7 @@ def run_spike(elf: str, isa: str = "rv32i", max_instr: int = 200_000) -> list[Re
                 f"--isa={isa}",
                 "--pc=0x80000000",
                 "--log-commits",
-                f"--instructions={max_instr}",
+                "-m0x80000000:0x80000",
                 f"--log={log_path}",
                 elf,
             ],

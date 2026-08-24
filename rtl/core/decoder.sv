@@ -215,6 +215,12 @@ module decoder (
       OP_SYSTEM: begin
         if (funct3 == 3'b000 && (insn_i[31:20] == 12'h000 || insn_i[31:20] == 12'h001)) begin
            illegal_o = 1'b0; // ECALL or EBREAK
+        end else if (funct3 != 3'b000) begin
+           // Unimplemented CSR instructions. Verification plan A4 dictates they read as 0
+           // and do not trap. We use the unused wb_sel=2'b11 to write 0 to the regfile.
+           reg_write_o = 1'b1;
+           wb_sel_o    = 2'b11;
+           illegal_o   = 1'b0;
         end else begin
            illegal_o = 1'b1;
         end

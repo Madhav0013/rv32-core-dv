@@ -64,7 +64,7 @@ class RetireLogger:
         parent = os.path.dirname(os.path.abspath(path))
         if parent:
             os.makedirs(parent, exist_ok=True)
-        self._fh = open(path, "w")
+        self._fh = open(path, "w", buffering=1 << 16)
         self._path = path
         self._count = 0
         self._flush_every = flush_every

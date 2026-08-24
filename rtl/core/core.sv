@@ -377,25 +377,17 @@ module core (
   string cov_log_name;
   initial begin
     if ($value$plusargs("rtl_log=%s", log_name)) begin
-      f = $fopen(log_name, "w");
+      // f = $fopen(log_name, "w"); // Disabled: cocotb RetireLogger writes the RTL log now
       cov_log_name = {log_name, ".cov"};
       f_cov = $fopen(cov_log_name, "w");
     end else begin
-      f = $fopen("rtl.log", "w");
+      // f = $fopen("rtl.log", "w");
       f_cov = $fopen("coverage.log", "w");
     end
   end
 
   always_ff @(posedge clk_i) begin
-    if (rst_ni && mem_wb_q.valid) begin
-      if (f != 0) begin
-        if (|mem_wb_q.rd_addr && mem_wb_q.reg_write) begin
-          $fdisplay(f, "%08x %08x %0d %08x", mem_wb_q.pc, mem_wb_q.insn, mem_wb_q.rd_addr, wb_data);
-        end else begin
-          $fdisplay(f, "%08x %08x 0 00000000", mem_wb_q.pc, mem_wb_q.insn);
-        end
-      end
-    end
+    // RTL log generation is now handled by tb/cocotb/test_soc_top.py via rvfi_* ports
     
     // Coverage trace: emitted every cycle after reset
     if (rst_ni) begin

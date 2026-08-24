@@ -24,8 +24,8 @@ below is backed by a command a stranger can run.
 |---|---|---|
 | RV32I architectural tests passing | **41 / 41** | `make arch` — see [`riscof_work/report.html`](riscof_work/report.html) |
 | RV32M architectural tests passing | — | M extension not implemented |
-| Random programs co-simulated vs. Spike | 5 | `make random` |
-| Instructions co-simulated (total) | — | `make random` |
+| Random programs co-simulated vs. Spike | 20 | `make random` |
+| Instructions co-simulated (total) | 98,718 | `make random` |
 | Functional coverage | - | `make coverage` |
 | Formal properties proven / bound depth | 33 / 15 | `make formal` |
 | Verilator lint warnings | 0 | `make lint` |

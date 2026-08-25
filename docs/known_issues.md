@@ -12,7 +12,7 @@ is fine; a file that is empty because failures were hidden is not.
 | 2 | `insn_sb`, `insn_sh`, `insn_sw` | `FAIL` | (b) unwired RVFI field. `rvfi_mem_wmask` is hardcoded to `4'b1111` ignoring store size, breaking the property. | RVFI implementation |
 | 3 | `pc_fwd_ch0` | `FAIL` | (a) real RTL bug. The core silently drops illegal instructions by clearing `valid` instead of trapping, causing the RVFI trace to skip PC values and fail the forward progress check. | Decoder trap handler |
 | 4 | `liveness_ch0` | `FAIL` | (a) real RTL bug. If fed an infinite stream of illegal instructions (e.g. ECALL), they are silently dropped forever and no instruction retires, violating liveness. | Decoder trap handler |
-| 5 | `reg_ch0` | `FAIL` | (a) real RTL bug. Pipeline bubbles are generated with `id_ex_valid=0` but keep `reg_write=1`, confusing the RVFI monitor, or a load-use stall sequence creates false RVFI reg tracking. | Pipeline control logic |
+| 5 | `reg_ch0` | `FAIL` | (b) unwired RVFI field (instrumentation defect). The register file write-enable is correctly gated by `valid`, so the RTL is architecturally safe. The failure is an independent RVFI harness defect caused by pipeline bubbles retaining `reg_write=1` into the monitor, or unconditional assignment of `rvfi_rs1_addr`/`rvfi_rs2_addr`. | RVFI implementation |
 
 ## Artifact Inventory (post-recovery)
 

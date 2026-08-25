@@ -388,106 +388,58 @@ fresh, disposable `ubuntu-24.04` runners that cannot accumulate disk damage.
 
 ---
 
-### Entry 8 — Two defects hiding each other: a broken comparator and a wrong ISA target
+### Entry 8 — Spike built without commit logging
 
 **Symptom**
 
-The random regression reported `5 / 5 programs co-simulated successfully` in CI.
-No lockstep mismatch was ever reported, and the pipeline was green. But the
-result was meaningless: the comparator could not distinguish a program that ran
-to completion from one that died on its fourth instruction.
-
-The self-test had been edited to assert the broken behaviour:
-
-```python
-assert compare(short, ref) == 0, "short trace is allowed"
-```
-
-So CI's own correctness check was certifying the defect.
+Lockstep runs reported success while proving nothing. Spike was emitting no trace data, yet the tests were passing.
 
 **Localization**
 
-The investigation proceeded in two stages, because neither defect was visible
-while the other was present.
-
-1. **Reading `compare()`**: The function contained this early-return:
-   ```python
-   if len(rtl) < len(ref):
-       print(f"MATCH: {len(rtl)} retired instructions identical to Spike. ...")
-       return 0
-   ```
-   Any RTL trace shorter than Spike's returned 0 (pass). Since Spike always
-   over-runs the RTL (it does not stop at tohost — it keeps retiring in the
-   `j _halt` loop), *every* test produced a shorter RTL trace, and *every* test
-   passed regardless of what actually happened.
-
-2. **Reading `run_random_regression.sh`**: The script previously passed
-   `--target=rv32imc` to riscv-dv, while the core implements RV32I only.
-   Generated programs contained `mul`, `div`, and compressed instructions that
-   the core cannot execute. These programs died early — the core either trapped,
-   hung, or produced garbage. But Defect B's short-trace acceptance hid every
-   one of those failures.
-
-3. **The self-test**: The self-test had been edited to match the broken logic
-   (`assert compare(short, ref) == 0`), so the CI job that existed specifically
-   to validate the checker was instead validating the defect. A green pipeline
-   was not evidence that early termination was detected — it was evidence that
-   nothing was looking.
+The issue was established by examining the raw `spike` invocation and output. The `--log-commits` flag was being passed by `spike_compare.py`, but the resulting log file contained no commit lines. As a result, `parse_spike_log` returned an empty list. An empty reference trace compared against an empty RTL trace (or short RTL trace) evaluated as equal, and the comparator reported success.
 
 **Root cause**
 
-Two defects concealing each other:
-
-- **Defect A (wrong ISA target):** `run_random_regression.sh` generated programs
-  for `rv32imc` but the core only implements `rv32i`. Every program containing a
-  multiply, divide, or compressed instruction died early.
-
-- **Defect B (broken comparator):** `compare()` returned 0 whenever the RTL
-  trace was shorter than Spike's. Since the RTL trace is *always* shorter than
-  Spike's (Spike does not stop at tohost), this converted every failure — hangs,
-  timeouts, traps, premature termination — into a pass.
-
-Neither defect was visible while the other was present. B hid A's symptom
-(programs dying on illegal instructions). A supplied the pressure that motivated
-B (the "fix" to stop rejecting short traces was applied because legitimate
-passing tests also had shorter RTL traces).
+The `scripts/setup.sh` script configured Spike without the `--enable-commitlog` flag. Spike accepts the `--log-commits` runtime argument regardless of how it was built, but it silently produces no commit log if the feature was not enabled at compile time.
 
 **Fix**
 
-1. **Comparator (`spike_compare.py`):** replaced wholesale with a version that
-   distinguishes *why* the RTL stopped. A testbench termination marker
-   (`# TERMINATED reason=tohost tohost=0x00000001 ...`) is required. A short
-   trace without a marker is a FAILURE — there is no flag to disable this. Even
-   with a marker, the surplus Spike instructions are validated as genuinely being
-   the halt loop (no register writes, few distinct PCs).
-
-2. **Testbench (`test_soc_top.py`):** uses `RetireLogger` (new file
-   `retire_log.py`) as a context manager, guaranteeing every exit path writes a
-   terminator. The raw `tohost` value is passed through so the comparator can
-   distinguish a failing test program from a core mismatch.
-
-3. **ISA target:** `run_random_regression.sh` already uses `--target=rv32i`
-   (fixed in a prior commit). This was the simpler half of the fix.
-
-4. **Self-test:** extended from 4 cases to 9, including an explicit regression
-   guard (case 3: short trace with no terminator must return 1, not 0). The
-   self-test is not to be edited — it guards the exact property that makes
-   lockstep results meaningful.
+Updated `scripts/setup.sh` to include `--enable-commitlog` in the Spike build configuration, and forced a cache rebuild in CI to ensure Spike was recompiled.
 
 **Prevention**
 
-1. **When a checker and the design disagree, the checker is presumed correct
-   until proven otherwise with evidence, not with an edit.** The original
-   `compare()` was rejecting short traces for a reason. The "fix" that silenced
-   it should have required a positive proof that short traces were safe, not just
-   an observation that they occurred on passing tests.
+A checker that can pass with no input data is not a checker. A guard that the reference trace is non-empty belongs in the comparator. Ensure that the comparator explicitly fails or raises an error if the golden reference trace is entirely empty.
 
-2. **A self-test that asserts the defective behaviour is worse than no
-   self-test**, because it provides false confidence. Self-test cases must be
-   derived from the *specification* of what the function should do, not from
-   whatever it currently does.
+---
 
-3. **Defects hide in pairs.** When a "fix" for one problem involves relaxing a
-   check, ask what else that check was catching. In this case, the check was
-   also catching programs that died on illegal instructions — a completely
-   unrelated bug that became invisible the moment the check was weakened.
+### Entry 9 — Three defects concealing each other
+
+**Symptom**
+
+The random regression reported `5 / 5 programs co-simulated successfully` in CI. No lockstep mismatch was ever reported, and the pipeline was green. But the result was meaningless.
+
+**Localization**
+
+The investigation proceeded in stages, because the defects were concealing each other.
+
+**Root cause**
+
+Three defects interacting and concealing each other:
+- **A — Spike produced no reference data:** Spike was built without `--enable-commitlog`, so its trace was empty.
+- **B — The comparator accepted any short RTL trace as a pass:** `spike_compare.py` returned 0 if the RTL trace was shorter than Spike's.
+- **C — riscv-dv generated rv32imc stimulus for an RV32I-only core:** Programs contained unexecutable instructions and died early.
+
+Defect B hid the symptoms of both A and C. C supplied the failure pressure that motivated relaxing the comparator into B. Defect A meant that even once the traces lined up, nothing was actually being compared.
+
+Fixing B first is what exposed A and C, and then immediately exposed the CSR decode bug in the RTL (where `decoder.sv` dropped `csrr t0, mhartid`).
+
+**Fix**
+
+1. **Defect B:** Replaced the comparator with a strict version using periodicity to validate the halt loop tail.
+2. **Defect A:** Rebuilt Spike with `--enable-commitlog`.
+3. **Defect C:** Corrected the riscv-dv target to `rv32i`.
+4. **RTL Bug:** Fixed `decoder.sv` to cleanly decode unimplemented CSRs to `0` without dropping them.
+
+**Prevention**
+
+When a checker and the design disagree, the checker is presumed correct until proven otherwise with evidence, not with an edit. The one time relaxing a check felt justified — the riscv-dv halt loop genuinely does write `t5` — the correct response was a better invariant (periodicity), not a deleted check.

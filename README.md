@@ -7,14 +7,7 @@
 > *estimated*. `scripts/audit.py` checks this mechanically and fails if a claim
 > outruns its evidence.
 
-A 5-stage pipelined RV32I processor, verified the way a processor DV team would
-verify one: against a golden reference model on every retired instruction,
-against the official RISC-V architectural test suite, with constrained-random
-stimulus, with a functional coverage model, and with bounded formal proofs.
-
-**The verification is the point.** A working RV32I core is a well-trodden
-exercise; what this repository is actually about is that every correctness claim
-below is backed by a command a stranger can run.
+A 5-stage pipelined RV32I processor, verified the way a processor DV team would verify one: against a golden reference model on every retired instruction, against the official RISC-V architectural test suite, with constrained-random stimulus, and with bounded formal proofs. **The verification is the point.** A working RV32I core is a well-trodden exercise. What this repository is about is that every correctness claim below is backed by a command a stranger can run, and by a CI log they can read. The comparator that produced these numbers has its own self-test, because a checker nobody checks is not evidence.
 
 ---
 
@@ -26,8 +19,8 @@ below is backed by a command a stranger can run.
 | RV32M architectural tests passing | — | M extension not implemented |
 | Random programs co-simulated vs. Spike | 20 | `make random` |
 | Instructions co-simulated (total) | 98,718 | `make random` |
-| Functional coverage | - | `make coverage` |
-| Formal properties proven / bound depth | 33 / 15 | `make formal` |
+| Functional coverage | — | `make coverage` |
+| Formal properties proven / bound depth | — | `make formal` |
 | Verilator lint warnings | 0 | `make lint` |
 
 ---
@@ -163,9 +156,12 @@ docs/           design decisions, verification plan, debug log
 
 ## What is not verified
 
-Stated deliberately — see [`docs/verification_plan.md`](docs/verification_plan.md)
-§4 for the full list. Formal results are bounded, not unbounded. No timing, area,
-or power claim is made unless a measured FPGA number appears in the table above.
+Stated deliberately — see [`docs/verification_plan.md`](docs/verification_plan.md) §A4 for the full list. Key gaps:
+- M extension not implemented, therefore not verified.
+- no interrupts; trap coverage limited to illegal instruction, misaligned access, ECALL and EBREAK.
+- functional coverage not measured.
+- formal results are bounded at depth 15 for insn, shallower for other check classes — not unbounded.
+- no timing, area, frequency or power claim is made.
 
 ---
 

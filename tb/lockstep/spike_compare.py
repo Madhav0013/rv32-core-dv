@@ -40,11 +40,13 @@ The fix implemented here distinguishes those cases by *why* the RTL stopped:
        the run ended (see tb/cocotb/retire_log.py).
     2. A short RTL trace is accepted ONLY when that marker says the run ended on
        a tohost write.
-    3. Even then, the surplus Spike instructions are validated as harmless: they
-       must perform no architectural register writes and must span only a couple
-       of distinct PCs -- i.e. they must genuinely be the halt loop. If Spike did
-       real work after the RTL stopped, the RTL terminated early and that is a
-       bug.
+    3. Even then, the surplus Spike instructions are validated as genuinely
+       being a halt loop: their PC sequence must be strictly PERIODIC with a
+       short period. A halt loop repeats exactly; real work does not. Register
+       writes in the tail are permitted -- riscv-dv's epilogue writes t5 on
+       every iteration -- so periodicity, not write-freedom, is the invariant.
+       If Spike did real work after the RTL stopped, the RTL terminated early
+       and that is a bug.
     4. No marker plus a short trace is a FAILURE. There is deliberately no flag
        to disable this. If your logs predate the marker, regenerate them.
 
@@ -157,8 +159,6 @@ def parse_spike_log(text: str) -> list[Retire]:
     for line in text.splitlines():
         m = _SPIKE_RE.match(line.strip())
         if not m:
-            if "core" in line.strip() and "0x" in line.strip():
-                print(f"DEBUG_SPIKE_UNMATCHED: {line.strip()}")
             continue  # banners, mem-only lines, csr lines
         rd = int(m.group("rd")) if m.group("rd") else 0
         val = int(m.group("val"), 16) if m.group("val") else 0
@@ -250,13 +250,13 @@ def run_spike(elf: str, isa: str = "rv32i", max_instr: int = 200_000) -> list[Re
     with tempfile.NamedTemporaryFile("w+", suffix=".spike.log", delete=False) as fh:
         log_path = fh.name
     try:
-        proc = subprocess.run(
+        subprocess.run(
             [
                 spike,
                 f"--isa={isa}",
                 "--pc=0x80000000",
                 "--log-commits",
-                "-m0x80000000:0x80000",
+                f"--instructions={max_instr}",
                 f"--log={log_path}",
                 elf,
             ],
@@ -266,12 +266,7 @@ def run_spike(elf: str, isa: str = "rv32i", max_instr: int = 200_000) -> list[Re
             timeout=600,
         )
         with open(log_path) as fh:
-            file_out = fh.read()
-            out = parse_spike_log(file_out if file_out.strip() else proc.stderr)
-            if not out:
-                import sys
-                print(f"SPIKE FAILURE DEBUG:\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}\nfile:\n{file_out}", file=sys.stderr)
-            return out
+            return parse_spike_log(fh.read())
     finally:
         os.unlink(log_path)
 
@@ -284,33 +279,52 @@ def _describe_tail(tail: list[Retire], limit: int = 6) -> str:
 
 
 def validate_halt_tail(
-    tail: list[Retire], max_distinct_pcs: int = 4
+    tail: list[Retire], max_period: int = 4
 ) -> tuple[bool, str]:
     """
-    Spike's surplus instructions must genuinely be the post-tohost halt loop.
+    Spike's surplus instructions must be a HALT LOOP, not continued real work.
 
-    Two independent checks, because either alone is foolable:
+    THE INVARIANT IS PERIODICITY. A halt loop repeats its PC sequence exactly,
+    forever. Real work does not. So the tail passes only if its PC sequence is
+    strictly periodic with a period of at most `max_period`.
 
-      * no architectural register writes -- `j _halt` is `jal x0, 0`, so a
-        writeback in the tail means real computation happened
-      * few distinct PCs -- the halt loop is one or two addresses; a spread of
-        addresses means the program carried on doing work
+    Register writes in the tail ARE permitted. An earlier revision of this check
+    forbade them, on the reasoning that `j _halt` is `jal x0, 0` and therefore
+    writes nothing. That holds for sw/crt0.S but NOT for riscv-dv, whose
+    epilogue is
 
-    If either fails, the RTL stopped BEFORE the program was actually finished
-    and the tohost write it saw was premature. That is a bug in the core or the
-    testbench, not an artefact of Spike over-running.
+        write_tohost:
+            sw gp, tohost, t5     -> auipc t5, %hi(tohost)
+                                     sw    gp, %lo(tohost)(t5)
+            j  write_tohost
+
+    and which therefore writes t5 on every iteration. Forbidding writes rejected
+    every legitimate riscv-dv run. Periodicity is the correct invariant: it
+    admits that loop while still rejecting a program that carried on computing.
+
+    A tail no longer than `max_period` is accepted without judgement -- there is
+    not enough of it to establish a period either way.
     """
     if not tail:
         return True, ""
 
-    if len({r.pc for r in tail}) > max_distinct_pcs:
-        return False, (
-            f"{len({r.pc for r in tail})} distinct PCs were found in the tail, "
-            f"exceeding the limit of {max_distinct_pcs}. Spike was likely executing "
-            f"real code, not just polling the halt loop."
-        )
+    pcs = [r.pc for r in tail]
 
-    return True, ""
+    if len(pcs) <= max_period:
+        return True, ""
+
+    for period in range(1, max_period + 1):
+        if all(pcs[i] == pcs[i % period] for i in range(len(pcs))):
+            return True, ""
+
+    distinct = len(set(pcs))
+    return False, (
+        f"the {len(tail)} surplus Spike instruction(s) are NOT a halt loop: "
+        f"their PC sequence is not periodic with any period up to {max_period} "
+        f"({distinct} distinct PCs). Spike was still executing real code after "
+        f"the RTL stopped, which means the RTL terminated before the program "
+        f"had finished -- a premature or spurious tohost write."
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -384,12 +398,6 @@ def compare(
         print("=" * 72)
         print("RTL RETIRED MORE INSTRUCTIONS THAN SPIKE")
         print("=" * 72)
-        if len(ref) == 0:
-            print("--- SPIKE LOG HEAD ---")
-            try:
-                import sys
-                print("raw spike output was empty or didn't match regex", file=sys.stderr)
-            except Exception: pass
         print(f"  RTL retired  : {len(rtl)}")
         print(f"  SPIKE retired: {len(ref)}")
         print(
@@ -449,7 +457,7 @@ def compare(
 
         # Clean tohost termination: the surplus must be the halt loop.
         tail = ref[len(rtl):]
-        ok, why = validate_halt_tail(tail, max_distinct_pcs=max_distinct_tail_pcs)
+        ok, why = validate_halt_tail(tail, max_period=max_distinct_tail_pcs)
         if not ok:
             print("=" * 72)
             print("RTL TERMINATED PREMATURELY")
@@ -486,7 +494,7 @@ def compare(
             f"MATCH: {len(rtl)} retired instructions identical to Spike.\n"
             f"  Clean termination: {termination}\n"
             f"  Spike ran {missing} further instruction(s) in the halt loop "
-            f"(no register writes, {len({r.pc for r in tail})} distinct PC(s)) "
+            f"(periodic over {len({r.pc for r in tail})} distinct PC(s)) "
             f"-- expected, since Spike does not stop at tohost."
         )
         return 0
@@ -573,6 +581,45 @@ def selftest() -> int:
         1,
     )
 
+    # 5. Short trace claiming clean tohost, but Spike kept doing REAL WORK --
+    #    a non-periodic spread of PCs. Premature/spurious tohost write, FAIL.
+    real_work = parse_spike_log(
+        "core   0: 3 0x0000000080000000 (0x00000297) x5  0x0000000080000000\n"
+        + "".join(
+            f"core   0: 3 0x00000000800001{i:02x} (0x00000013) x{i % 30 + 1} 0x{i:08x}\n"
+            for i in range(1, 12)
+        )
+    )
+    _case(
+        "premature tohost -- Spike still doing real work",
+        "80000000 00000297 5 80000000\n"
+        "# TERMINATED reason=tohost tohost=0x00000001 cycles=10 retired=1\n",
+        real_work,
+        1,
+    )
+
+    # 5b. THE riscv-dv EPILOGUE. Its halt loop is
+    #        write_tohost: auipc t5,..; sw gp,..(t5); j write_tohost
+    #     so it WRITES t5 on every iteration. An earlier revision of
+    #     validate_halt_tail forbade register writes in the tail and therefore
+    #     rejected every legitimate riscv-dv run. Periodicity admits it.
+    dv_halt = parse_spike_log(
+        "core   0: 3 0x0000000080000000 (0x00000297) x5  0x0000000080000000\n"
+        + "".join(
+            "core   0: 3 0x0000000080002000 (0x00001f17) x30 0x0000000080003000\n"
+            "core   0: 3 0x0000000080002004 (0x0061a023) \n"
+            "core   0: 3 0x0000000080002008 (0xff9ff06f) \n"
+            for _ in range(5)
+        )
+    )
+    _case(
+        "riscv-dv halt loop -- periodic, writes t5 every iteration",
+        "80000000 00000297 5 80000000\n"
+        "# TERMINATED reason=tohost tohost=0x00000001 cycles=10 retired=1\n",
+        dv_halt,
+        0,
+    )
+
     # 6. RTL retired more than Spike -> flushed instructions retiring, FAIL.
     _case(
         "RTL retired more than Spike",
@@ -610,7 +657,7 @@ def selftest() -> int:
         raise AssertionError("duplicate TERMINATED markers must be rejected")
 
     print("\n" + "=" * 72)
-    print("self-test: OK -- 8/8 cases behave correctly")
+    print("self-test: OK -- 10/10 cases behave correctly")
     print("  A short RTL trace without a termination marker FAILS, which is the")
     print("  property that makes every lockstep result meaningful.")
     print("=" * 72)

@@ -19,7 +19,8 @@ out_*/
 seed_*/
 
 # Formal
-formal/checks/
+formal/checks/*
+!formal/RESULTS.txt
 *.sby.log
 
 # Compiled test programs

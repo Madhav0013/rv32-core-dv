@@ -284,6 +284,25 @@ jobs:
           echo "Both the property count AND the bound depth go in the README." \
             >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Generate RESULTS.txt
+        if: always()
+        run: |
+          echo "Generating formal/RESULTS.txt..."
+          DEPTH=$(grep -rhoP 'depth\s*[:=]\s*\K\d+' formal/*.cfg formal/**/*.sby 2>/dev/null | head -1)
+          DEPTH=${DEPTH:-15}
+          rm -f formal/RESULTS.txt
+          for d in formal_tools/riscv-formal/cores/rv32i_core/checks/*; do
+            if [ -d "$d" ]; then
+              name=$(basename "$d")
+              if [ -f "$d/PASS" ]; then status="PASS"
+              elif [ -f "$d/FAIL" ]; then status="FAIL"
+              else status="UNKNOWN"
+              fi
+              echo "$status | Depth $DEPTH | $name" >> formal/RESULTS.txt
+            fi
+          done
+          sort -o formal/RESULTS.txt formal/RESULTS.txt
+
       - name: Upload formal results
         if: always()
         uses: actions/upload-artifact@v7

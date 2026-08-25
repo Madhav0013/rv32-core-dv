@@ -20,8 +20,10 @@ A 5-stage pipelined RV32I processor, verified the way a processor DV team would 
 | Random programs co-simulated vs. Spike | 20 | `make random` |
 | Instructions co-simulated (total) | 98,718 | `make random` |
 | Functional coverage | — | `make coverage` |
-| Formal properties proven / bound depth | — | `make formal` |
+| Formal properties proven / bound depth | 32 proven, 11 failing / 15 | `make formal` — see formal/RESULTS.txt |
 | Verilator lint warnings | 0 | `make lint` |
+
+*Note: The 11 formal failures are caused by unwired RVFI memory fields and the core silently dropping illegal instructions rather than trapping.*
 
 ---
 

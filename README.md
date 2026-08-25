@@ -160,7 +160,6 @@ Stated deliberately — see [`docs/verification_plan.md`](docs/verification_plan
 - M extension not implemented, therefore not verified.
 - no interrupts; trap coverage limited to illegal instruction, misaligned access, ECALL and EBREAK.
 - functional coverage not measured.
-- formal results are bounded at depth 15 for insn, shallower for other check classes — not unbounded.
 - no timing, area, frequency or power claim is made.
 
 ---
